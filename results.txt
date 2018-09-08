@@ -1,0 +1,4 @@
+Playing game gvgai-aliens
+Training : level 0 Score : 52.0
+Training : level 1 Score : 53.0
+Evaluation : level 3 Score : 

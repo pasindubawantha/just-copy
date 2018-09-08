@@ -6,17 +6,15 @@ from AC_Network import AC_Network
 
 
 class Worker():
-    def __init__(self,name,s_size,a_size,trainer,model_path,s_shape):
-        self.name = "worker_" + str(name)
-        self.number = name        
+    def __init__(self,name,s_size,a_size,trainer,model_path,s_shape,session):
+        self.name = "worker_" + str(name)       
         self.trainer = trainer
 
         #Create the local copy of the network and the tensorflow op to copy global paramters to local network
         self.local_AC = AC_Network(s_size,a_size,self.name,trainer,s_shape)
-        self.update_local_ops = update_target_graph('global',self.name)        
-        
-        self.actions = self.actions = np.identity(a_size,dtype=bool).tolist()
-
+        self.update_local_ops = update_target_graph('global',self.name)       
+        self.episode_count = 0
+        self.summary_writer = tf.summary.FileWriter("tensor_flow/train_"+str(name), session.graph) 
         
     def train(self,rollout,sess,gamma,bootstrap_value):
         rollout = np.array(rollout)
@@ -54,26 +52,18 @@ class Worker():
             feed_dict=feed_dict)
         
         return v_l / len(rollout),p_l / len(rollout),e_l / len(rollout), g_n,v_n
-        
-    def visualize(self):
-
-        plt.ylabel(str(conv1.shape))
-        plt.plot(conv1)
-        
+            
     
-    def work(self,gamma,sess,coord,saver, sso,reward, prv_observation,prv_action,elapsed_timer,do_train,game_over, first_run):
+    def work(self, gamma, session, prv_observation, prv_action, reward, observation, game_over, do_train, first_run):
 
         # print ("Starting worker " + str(self.number))
-        with sess.as_default(), sess.graph.as_default():                 
+        with session.as_default(), session.graph.as_default():                 
             if first_run:
-                sess.run(self.update_local_ops)
+                session.run(self.update_local_ops)
                 self.episode_buffer = []
 
-            s = process_frame(prv_observation)
-            a = prv_action
-            r = reward
-
-            s1 = process_frame(sso.observation)
+            prv_observation = process_frame(prv_observation)
+            observation = process_frame(observation)
 
             
             rnn_state = self.local_AC.state_init
@@ -81,17 +71,14 @@ class Worker():
 
             
             #Take an action using probabilities from policy network output.
-            a_dist,v,rnn_state = sess.run([self.local_AC.policy,self.local_AC.value,self.local_AC.state_out], 
-                feed_dict={self.local_AC.inputs:[s1],
+            action_distribution,value,rnn_state = session.run([self.local_AC.policy,self.local_AC.value,self.local_AC.state_out], 
+                feed_dict={self.local_AC.inputs:[observation],
                 self.local_AC.state_in[0]:rnn_state[0],
                 self.local_AC.state_in[1]:rnn_state[1]})
-            a1 = np.random.choice(a_dist[0],p=a_dist[0])
-            a1 = np.argmax(a_dist == a1)
-
-            d = game_over
-
+            action = np.random.choice(action_distribution[0],p=action_distribution[0])
+            action = np.argmax(action_distribution == action)
                 
-            self.episode_buffer.append([s,a,r,s1,d,v[0,0]])
+            self.episode_buffer.append([prv_observation, prv_action, reward, observation, game_over, value[0,0]])
             
             # If the episode hasn't ended, but the experience buffer is full, then we
             # make an update step using that experience rollout.
@@ -104,9 +91,19 @@ class Worker():
                 #     self.local_AC.state_in[1]:rnn_state[1]})[0,0]
                 
                 #v_l,p_l,e_l,g_n,v_n = self.train(self.episode_buffer,sess,gamma,v)
-                v_l,p_l,e_l,g_n,v_n = self.train(self.episode_buffer,sess,gamma,0.0)
-                #self.train(self.episode_buffer,sess,gamma,0.0)
+                v_l,p_l,e_l,g_n,v_n = self.train(self.episode_buffer, session, gamma, 0.0)
                 self.episode_buffer = []
-                sess.run(self.update_local_ops)
+                session.run(self.update_local_ops)
+
+                
+                self.episode_count += 1
+                # summary = tf.Summary()
+                # summary.value.add(tag='Losses/Value Loss', simple_value=float(v_l))
+                # summary.value.add(tag='Losses/Policy Loss', simple_value=float(p_l))
+                # summary.value.add(tag='Losses/Entropy', simple_value=float(e_l))
+                # summary.value.add(tag='Losses/Grad Norm', simple_value=float(g_n))
+                # summary.value.add(tag='Losses/Var Norm', simple_value=float(v_n)) 
+                # self.summary_writer.add_summary(summary, self.episode_count)
+                self.summary_writer.flush()                              
             
-            return a1
+            return action
