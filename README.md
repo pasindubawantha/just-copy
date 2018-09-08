@@ -1,7 +1,10 @@
-# OUR INSTRUCTIONS UCSC FOR NIGGAS
+# OUR INSTRUCTIONS FOR UCSC 
 
-user Pyton 3.7.0
-for mac boys if matplotlib is troubling (Check this link)[https://matplotlib.org/faq/osx_framework.html#osxframework-faq]
+* user Pyton 3.6.6
+* for mac users if matplotlib is troubling [Check this link](https://matplotlib.org/faq/osx_framework.html#osxframework-faq)
+* * put `backend : macosx` in  ~./.matplotlib/matplotlibrc for matplotlib to work
+
+* Run agent_runner.py
 
 
 # GVGAI GYM
