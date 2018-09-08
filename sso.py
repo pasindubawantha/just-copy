@@ -13,5 +13,3 @@ class sso:
         # self.resourcesPositions = None
         # self.portalsPositions = None
         # self.fromAvatarSpritesPositions = None
-       
-       

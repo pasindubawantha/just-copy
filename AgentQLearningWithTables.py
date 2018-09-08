@@ -1,45 +1,87 @@
+import tensorflow as tf
+#import tensorflow.contrib.slim as slim
+import numpy as np
+from helpers import *
+from AC_Network import AC_Network 
+from Worker import Worker
+import os
+
 class AgentQLearningWithTables :
-    """
-    Method to be called at the start of an evaluation process (training & testing) for a particular game.
-    """
     def __init__(self):
-        self.yourvar = 0
+        self.ran_first_time = False
+        self.train_steps = 5
+        tf.reset_default_graph()
+        
+   
     
-    
-    """
-    * Public method to be called at the start of every level of a game.
-    * Perform any level-entry initialization here.
-    * @param sso Phase Observation of the current game.
-    * @param elapsedTimer Timer (1s)
-    """
     def init(self, sso, elapsed_timer):
-        print("init ran")
+        if not self.ran_first_time :
+            #STAT OF FIRST INIT
+            self.prv_observation = None
+            self.prv_score = 0
+            self.prv_action = 0
+            self.ran_first_time = True
+
+            self.gamma = .99 # discount rate for advantage estimation and reward discounting
+
+            self.s_size = sso.observation.shape[0] * sso.observation.shape[1] * sso.observation.shape[2] # Observations are greyscale frames of 84 * 84 * 1
+            self.a_size = len(sso.availableActions) # Agent can move Left, Right, or Fire
+            self.s_shape = sso.observation.shape
+
+            self.model_path = '.tensor_flow/model'
+        
+            if not os.path.exists(self.model_path):
+                os.makedirs(self.model_path)
+                
+            # #Create a directory to save episode playback gifs to
+            # if not os.path.exists('./frames'):
+            #     os.makedirs('./frames')
+        
+            tf.reset_default_graph()
+
+            with tf.device("/cpu:0"): 
+                self.global_episodes = 0
+                self.trainer = tf.train.AdamOptimizer(learning_rate=1e-4)
+                self.master_network = AC_Network(self.s_size, self.a_size, 'global', None, self.s_shape) # Generate global network
+                
+                self.saver = tf.train.Saver(max_to_keep=5)
+                self.coord = tf.train.Coordinator()
+                self.session = tf.Session()
+                self.session.run(tf.global_variables_initializer())
+
+            game_lvl = 1
+            self.Worker = Worker(game_lvl, self.s_size, self.a_size, self.trainer, self.model_path, self.s_shape)
+            self.session.run(tf.global_variables_initializer())
+            #END OF FIRST INIT
+        
+        
+
+        self.prv_observation = sso.observation
+        print("Agent Init ran")
 
 
-    """
-    Method used to determine the next move to be performed by the agent.
-
-    @param sso: observation of the current state of the game
-    @param elapsed_timer: the timer
-    @return index of the action to be taken
-    """
     def act(self, sso, elapsed_timer):
-        print("act ran")
+        reward = sso.gameScore - self.prv_score
 
-        return sso.availableActions[1]
+        if sso.gameTick == 1:
+            action = self.Worker.work(self.gamma, self.session, self.coord, self.saver, sso, reward, self.prv_observation , self.prv_action, elapsed_timer, False, False, True)
+        else:
+            if sso.gameTick % self.train_steps == 0: #train
+                action = self.Worker.work(self.gamma,self.session, self.coord,self.saver, sso,reward, self.prv_observation, self.prv_action ,elapsed_timer, True, False, False)
+                self.global_episodes += 1
+            else: #collect experiance
+                action = self.Worker.work(self.gamma,self.session, self.coord,self.saver, sso,reward, self.prv_observation, self.prv_action ,elapsed_timer, False, False, False)
+        
 
-    """
-    * Method used to perform actions in case of a game end.
-    * This is the last thing called when a level is played (the game is already in a terminal state).
-    * Use this for actions such as teardown or process data.
-    *
-    * @param sso The current state observation of the game.
-    * @param elapsedTimer Timer (up to CompetitionParameters.TOTAL_LEARNING_TIME
-    * or CompetitionParameters.EXTRA_LEARNING_TIME if current global time is beyond TOTAL_LEARNING_TIME)
-    * @return The next level of the current game to be played.
-    * The level is bound in the range of [0,2]. If the input is any different, then the level
-    * chosen will be ignored, and the game will play a random one instead.
-    """
+        self.prv_observation = sso.observation
+        self.prv_score = sso.gameScore
+        self.prv_action = action
+        
+        return sso.availableActions[action]
+
+ 
     def result(self, sso, elapsed_timer):
-        print("result ran")
+        reward = sso.gameScore - self.prv_score
+        self.Worker.work(self.gamma,self.session, self.coord,self.saver, sso,reward, self.prv_observation ,self.prv_action ,elapsed_timer, True, True, False)
+        print("Agent Result ran")
         return 0

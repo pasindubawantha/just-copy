@@ -1,7 +1,7 @@
 # OUR INSTRUCTIONS UCSC FOR NIGGAS
 
 user Pyton 3.7.0
-
+for mac boys if matplotlib is troubling (Check this link)[https://matplotlib.org/faq/osx_framework.html#osxframework-faq]
 
 
 # GVGAI GYM
